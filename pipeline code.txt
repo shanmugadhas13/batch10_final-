@@ -1,0 +1,85 @@
+node{
+        def mavenHome
+        def mavenCMD
+        def docker
+        def dockerCMD
+
+        stage('Preparation of Environment')
+        {
+            
+                echo "Setting up the Jenkins "
+                mavenHome = tool name: 'maven', type: 'maven'
+                mavenCMD = "${mavenHome}/bin/mvn"
+                docker = tool name: 'docker', type:'org.jenkinsci.plugins.docker.commons.tools.DockerTool'
+                dockerCMD = "$docker/bin/docker"
+                      
+        }
+        stage('Git checkout')
+        {
+           
+                echo "Check the code from git repos"
+                git 'https://github.com/shanmugadhas13/batch10.git'
+        }
+        stage('Clean,Build and Package of application')
+		{
+                echo "Building the application..."
+                sh "${mavenCMD} clean package"
+        }
+        stage('Sonar Scan')
+			{
+            
+               echo "Scanning application for vulnerabilities using Sonar..."
+                sh "${mavenCMD} sonar:sonar -Dsonar.host.url=http://35.225.159.34:9000  -Dsonar.login=1a04e123214a2dc8797a0ca83f3f37466cd515f0"
+            }			
+        stage('Junits HTML Report')
+	    {    
+                echo " Publish the HTML report of build"
+                publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, keepAll: false, reportDir: 'target/', reportFiles: 'surefire-report.html', reportName: 'HTML Report', reportTitles: ''])
+        }
+		stage('Building a Docker Image')
+		try
+		{    
+                echo "Building docker image for application"
+                sh 'docker build -t shanmugha13/final-devops13:pipeline13 .'
+		}
+		catch(Exception err)
+           {
+                echo "Exception occured during Publish Report..."
+                currentBuild.result="FAILURE"
+                mail to: 'shanmugha13@gmail.com', subject: "Job ${JOB_NAME} (${BUILD_NUMBER}) is  Failed at building new image  ", body: "Hi there, \n The build is at - ${BUILD_URL}. \n Error: $err \n  \n Bye "
+                throw err
+            }
+		
+		stage("Log into the Dockerhub and Push Docker Image")
+		try
+		{
+				echo "Log into the dockerhub and Pushing image"
+				   
+                    sh ('docker' + ' login -u shanmugha13 -p Shanu@13@dockerhub')
+                    sh 'docker push shanmugha13/final-devops13:pipeline13'
+		}
+		catch(Exception err)
+           {
+                echo "Exception occured during Publish Report..."
+                currentBuild.result="FAILURE"
+                mail to: 'shanmugha13@gmail.com', subject: "Job ${JOB_NAME} (${BUILD_NUMBER}) is  Failed at pushing the image into Dockerhub repo  ", body: "Hi there, \n The build is at - ${BUILD_URL}. \n Error: $err \n  \n Bye "
+                throw err
+            }
+		{
+                echo "Deploying applicaiton using Ansible Playbook.."
+                    sh ('echo wolf |sudo -S sudo ansible-playbook create_new_instance.yml')
+        }
+        catch(Exception err)
+           {
+                echo "Exception occured during Publish Report..."
+                currentBuild.result="FAILURE"
+                mail to: 'shanmugha13@gmail.com', subject: "Job ${JOB_NAME} (${BUILD_NUMBER}) is  Failed at Deploying new GCP instance with Application using Ansible  ", body: "Hi there, \n The build is at - ${BUILD_URL}. \n Error: $err \n  \n Bye "
+                throw err
+            } 
+    }
+	
+	
+	
+	
+	
+	
